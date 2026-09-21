@@ -54,7 +54,7 @@ export class Blade {
   constructor(canvas) {
     this.canvas = canvas;
     this.points = []; // {x, y, time}
-    this.maxTrailAge = 180; // ms
+    this.maxTrailAge = 120; // ms
     this.isMouseDown = false;
     this.currentSkin = BLADE_SKINS.classic;
     this.sparks = [];
@@ -156,7 +156,7 @@ export class Blade {
   }
 
   emitSparks(x, y, dx, dy) {
-    const count = 2;
+const count = this.canvas.width > 1000 ? 2 : 1;
     for (let i = 0; i < count; i++) {
       const angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.5;
       const speed = Math.random() * 80 + 40;
@@ -177,7 +177,12 @@ export class Blade {
   update(dt) {
     const now = performance.now();
     // Prune expired trail points
-    this.points = this.points.filter((p) => now - p.time < this.maxTrailAge);
+while (
+  this.points.length > 0 &&
+  now - this.points[0].time >= this.maxTrailAge
+) {
+  this.points.shift();
+}
 
     // Update blade sparks
     for (let i = this.sparks.length - 1; i >= 0; i--) {
@@ -192,107 +197,102 @@ export class Blade {
     }
   }
 
-  draw(ctx) {
-    const now = performance.now();
+draw(ctx) {
+  const now = performance.now();
 
-    // Draw sparks
+  // Sparks
+  if (this.sparks.length > 0) {
     ctx.save();
+
     for (const sp of this.sparks) {
+      if (sp.alpha <= 0) continue;
+
       ctx.globalAlpha = sp.alpha;
       ctx.fillStyle = sp.color;
       ctx.beginPath();
       ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.restore();
-
-    // Render trail if we have at least 2 points
-    if (this.points.length < 2) return;
-
-    ctx.save();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    // Draw outer glowing aura
-    for (let i = 1; i < this.points.length; i++) {
-      const p0 = this.points[i - 1];
-      const p1 = this.points[i];
-      const ageRatio = (now - p1.time) / this.maxTrailAge;
-      const alpha = Math.max(0, 1 - ageRatio);
-      const width = (1 - ageRatio) * 16 + 2;
-
-      ctx.strokeStyle = this.currentSkin.glowColor;
-      ctx.globalAlpha = alpha * 0.45;
-      ctx.lineWidth = width * 1.8;
-      ctx.shadowColor = this.currentSkin.glowColor;
-      ctx.shadowBlur = 12;
-
-      ctx.beginPath();
-      ctx.moveTo(p0.x, p0.y);
-      ctx.lineTo(p1.x, p1.y);
-      ctx.stroke();
-    }
-
-    // Draw middle trail
-    for (let i = 1; i < this.points.length; i++) {
-      const p0 = this.points[i - 1];
-      const p1 = this.points[i];
-      const ageRatio = (now - p1.time) / this.maxTrailAge;
-      const alpha = Math.max(0, 1 - ageRatio);
-      const width = (1 - ageRatio) * 10 + 2;
-
-      ctx.strokeStyle = this.currentSkin.trailColor;
-      ctx.globalAlpha = alpha * 0.85;
-      ctx.lineWidth = width;
-
-      ctx.beginPath();
-      ctx.moveTo(p0.x, p0.y);
-      ctx.lineTo(p1.x, p1.y);
-      ctx.stroke();
-    }
-
-    // Draw sharp glowing blade core
-    for (let i = 1; i < this.points.length; i++) {
-      const p0 = this.points[i - 1];
-      const p1 = this.points[i];
-      const ageRatio = (now - p1.time) / this.maxTrailAge;
-      const alpha = Math.max(0, 1 - ageRatio);
-      const width = (1 - ageRatio) * 4 + 1;
-
-      ctx.strokeStyle = this.currentSkin.coreColor;
-      ctx.globalAlpha = alpha;
-      ctx.lineWidth = width;
-
-      ctx.beginPath();
-      ctx.moveTo(p0.x, p0.y);
-      ctx.lineTo(p1.x, p1.y);
-      ctx.stroke();
-    }
 
     ctx.restore();
   }
+
+  if (this.points.length < 2) return;
+
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  // Outer glow — no shadowBlur
+  ctx.strokeStyle = this.currentSkin.glowColor;
+  ctx.shadowBlur = 0;
+
+  for (let i = 1; i < this.points.length; i++) {
+    const p0 = this.points[i - 1];
+    const p1 = this.points[i];
+
+    const ageRatio = (now - p1.time) / this.maxTrailAge;
+    if (ageRatio >= 1) continue;
+
+    const alpha = 1 - ageRatio;
+
+    ctx.globalAlpha = alpha * 0.35;
+    ctx.lineWidth = (1 - ageRatio) * 18 + 3;
+
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+  }
+
+  // Core
+  ctx.strokeStyle = this.currentSkin.coreColor;
+
+  for (let i = 1; i < this.points.length; i++) {
+    const p0 = this.points[i - 1];
+    const p1 = this.points[i];
+
+    const ageRatio = (now - p1.time) / this.maxTrailAge;
+    if (ageRatio >= 1) continue;
+
+    ctx.globalAlpha = 1 - ageRatio;
+    ctx.lineWidth = (1 - ageRatio) * 4 + 1;
+
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
 
   /**
    * Returns recent segment pairs to check for slice collisions
    */
-  getSegments() {
-    const segs = [];
-    if (this.points.length < 2) return segs;
-    const now = performance.now();
+getSegments() {
+  if (this.points.length < 2) return [];
 
-    // Check points that were added in the last ~70ms
-    for (let i = 1; i < this.points.length; i++) {
-      const p0 = this.points[i - 1];
-      const p1 = this.points[i];
-      if (now - p1.time < 90) {
-        segs.push({
-          x1: p0.x,
-          y1: p0.y,
-          x2: p1.x,
-          y2: p1.y,
-        });
-      }
+  const now = performance.now();
+  const segs = [];
+
+  // Only inspect the most recent points.
+  const start = Math.max(1, this.points.length - 8);
+
+  for (let i = start; i < this.points.length; i++) {
+    const p0 = this.points[i - 1];
+    const p1 = this.points[i];
+
+    if (now - p1.time < 70) {
+      segs.push({
+        x1: p0.x,
+        y1: p0.y,
+        x2: p1.x,
+        y2: p1.y,
+      });
     }
-    return segs;
   }
+
+  return segs;
+}
 }

@@ -169,7 +169,7 @@ export class Fruit {
     );
 
     // Spawn juicy splatter particles
-    const particleCount = this.isSpecial ? 35 : 20;
+    const particleCount = this.isSpecial ? 18 : 10;
     for (let i = 0; i < particleCount; i++) {
       particlesArray.push(new JuiceParticle(this.x, this.y, this.juiceColor, sliceAngle));
     }
