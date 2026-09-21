@@ -28,7 +28,7 @@ export class Game {
     // Display sizing
     this.width = window.innerWidth;
     this.height = window.innerHeight;
-    this.dpr = window.devicePixelRatio || 1;
+this.dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     this.setupCanvas();
 
     // Entities
@@ -70,7 +70,7 @@ export class Game {
 
     // Timing
     this.lastTime = performance.now();
-
+this.lastDisplayedTime = -1;
     window.addEventListener('resize', () => this.setupCanvas());
     this.animate = this.animate.bind(this);
     requestAnimationFrame(this.animate);
@@ -98,6 +98,7 @@ export class Game {
     this.spawnInterval = 2.2;
     this.isFrenzy = false;
     this.frenzyTimer = 0;
+this.lastDisplayedTime = -1;
 
     if (this.mode === 'arcade') {
       this.maxTimer = 60;
@@ -351,7 +352,12 @@ export class Game {
       // Timer update for timed modes
       if (this.mode === 'arcade' || this.mode === 'zen') {
         this.timer -= dt;
-        this.ui.updateTimer(this.timer, this.maxTimer);
+const displayedTime = Math.ceil(this.timer);
+
+if (displayedTime !== this.lastDisplayedTime) {
+  this.lastDisplayedTime = displayedTime;
+  this.ui.updateTimer(this.timer, this.maxTimer);
+}
         if (this.timer <= 0) {
           this.gameOver('timeout');
           return;
