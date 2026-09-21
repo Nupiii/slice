@@ -26,24 +26,34 @@ export class JuiceParticle {
     this.alpha = Math.max(0, this.life / this.maxLife);
   }
 
-  draw(ctx) {
-    if (this.alpha <= 0) return;
-    ctx.save();
-    ctx.globalAlpha = this.alpha;
-    ctx.fillStyle = this.color;
-    
-    // Stretch droplet along velocity
-    const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
-    const angle = Math.atan2(this.vy, this.vx);
-    const stretch = Math.min(2.5, Math.max(1, speed / 150));
+draw(ctx) {
+  if (this.alpha <= 0) return;
 
-    ctx.translate(this.x, this.y);
-    ctx.rotate(angle);
-    ctx.beginPath();
-    ctx.ellipse(0, 0, this.radius * stretch, this.radius, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
+  const speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
+  const angle = Math.atan2(this.vy, this.vx);
+  const stretch = Math.min(2.5, Math.max(1, speed / 150));
+
+  ctx.globalAlpha = this.alpha;
+  ctx.fillStyle = this.color;
+
+  ctx.save();
+  ctx.translate(this.x, this.y);
+  ctx.rotate(angle);
+
+  ctx.beginPath();
+  ctx.ellipse(
+    0,
+    0,
+    this.radius * stretch,
+    this.radius,
+    0,
+    0,
+    Math.PI * 2
+  );
+  ctx.fill();
+
+  ctx.restore();
+}
 }
 
 export class JuiceSplatDecal {
@@ -202,8 +212,8 @@ export class BombExplosionParticle {
         ctx.globalAlpha = ring.alpha;
         ctx.strokeStyle = ring.color;
         ctx.lineWidth = 10 * (1 - ring.radius / ring.maxRadius) + 2;
-        ctx.shadowColor = ring.color;
-        ctx.shadowBlur = 15;
+        // ctx.shadowColor = ring.color;
+        // ctx.shadowBlur = 15;
         ctx.beginPath();
         ctx.arc(0, 0, ring.radius, 0, Math.PI * 2);
         ctx.stroke();
