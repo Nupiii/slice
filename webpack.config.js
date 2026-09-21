@@ -7,12 +7,12 @@ module.exports = (env, argv) => {
 
   return {
     entry: './src/index.js',
-    output: {
-      path: path.resolve(__dirname, 'dist'),
-      filename: isProduction ? 'js/[name].[contenthash:8].js' : 'bundle.js',
-      clean: true,
-      publicPath: '',
-    },
+output: {
+  path: path.resolve(__dirname, 'dist'),
+  filename: isProduction ? 'js/[name].[contenthash:8].js' : 'bundle.js',
+  clean: true,
+  publicPath: './',
+},
     mode: isProduction ? 'production' : 'development',
     devtool: isProduction ? 'source-map' : 'eval-cheap-module-source-map',
     devServer: {
