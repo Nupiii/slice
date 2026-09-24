@@ -28,7 +28,7 @@ export class Game {
     // Display sizing
     this.width = window.innerWidth;
     this.height = window.innerHeight;
-this.dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+this.dpr = 1;
     this.setupCanvas();
 
     // Entities
@@ -228,16 +228,39 @@ this.lastDisplayedTime = -1;
 
     let slicedInThisFrame = 0;
 
-    for (const seg of segments) {
-      // Check fruit collisions
-      for (let i = this.fruits.length - 1; i >= 0; i--) {
+for (const seg of segments) {
+    const segMinX = Math.min(seg.x1, seg.x2);
+    const segMaxX = Math.max(seg.x1, seg.x2);
+    const segMinY = Math.min(seg.y1, seg.y2);
+    const segMaxY = Math.max(seg.y1, seg.y2);
+
+    for (let i = this.fruits.length - 1; i >= 0; i--) {
         const fruit = this.fruits[i];
+
         if (fruit.isSliced) continue;
 
+        // Cheap broad-phase collision test
+        if (
+            fruit.x + fruit.radius < segMinX ||
+            fruit.x - fruit.radius > segMaxX ||
+            fruit.y + fruit.radius < segMinY ||
+            fruit.y - fruit.radius > segMaxY
+        ) {
+            continue;
+        }
+
+        // Expensive precise test only for nearby fruits
         const check = checkSegmentCircleIntersection(
-          seg.x1, seg.y1, seg.x2, seg.y2,
-          fruit.x, fruit.y, fruit.radius
+            seg.x1,
+            seg.y1,
+            seg.x2,
+            seg.y2,
+            fruit.x,
+            fruit.y,
+            fruit.radius
         );
+
+        if (!check.hit) continue;
 
         if (check.hit) {
           slicedInThisFrame++;

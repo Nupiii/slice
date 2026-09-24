@@ -53,16 +53,29 @@ export const BLADE_SKINS = {
 export class Blade {
   constructor(canvas) {
     this.canvas = canvas;
-    this.points = []; // {x, y, time}
-    this.maxTrailAge = 120; // ms
+
+    this.points = [];
+    this.maxPoints = 16;
+    this.maxTrailAge = 120;
+
     this.isMouseDown = false;
-    this.currentSkin = BLADE_SKINS.classic;
-    this.sparks = [];
-    this.minSliceSpeed = 120; // px per sec
-    this.lastPos = null;
     this.isSwiping = false;
+    this.lastPos = null;
+
+    this.currentSkin = BLADE_SKINS.classic;
+
+    this.sparks = [];
+    this.maxSparks = 20;
+
+    this.minSliceSpeed = 120;
+
+    this.canvasRect = null;
+
+    this.isMobile =
+      window.matchMedia('(pointer: coarse)').matches;
 
     this.setupListeners();
+    this.updateCanvasRect();
   }
 
   setSkin(skinId) {
@@ -71,95 +84,132 @@ export class Blade {
     }
   }
 
+  updateCanvasRect() {
+    this.canvasRect = this.canvas.getBoundingClientRect();
+  }
+
   setupListeners() {
-    // Mouse events
-    window.addEventListener('mousedown', (e) => {
-      if (e.target && e.target.closest && e.target.closest('button, .mode-card, .blade-card, .btn-close')) {
-        return;
-      }
+    this.canvas.style.touchAction = 'none';
+
+    this.canvas.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+
       this.isMouseDown = true;
+
       const pos = this.getCanvasCoords(e);
+
+      this.points.length = 0;
       this.addPoint(pos.x, pos.y);
+
       this.lastPos = pos;
+
+      try {
+        this.canvas.setPointerCapture(e.pointerId);
+      } catch {}
     });
 
-    window.addEventListener('mouseup', () => {
-      this.isMouseDown = false;
-      this.lastPos = null;
-      this.isSwiping = false;
-    });
+    this.canvas.addEventListener('pointermove', (e) => {
+      if (!this.isMouseDown) return;
 
-    window.addEventListener('mousemove', (e) => {
       const pos = this.getCanvasCoords(e);
-      if (this.isMouseDown) {
-        this.handleMove(pos.x, pos.y);
-      }
+      this.handleMove(pos.x, pos.y);
     });
 
-    // Touch events for mobile/tablets
-    window.addEventListener('touchstart', (e) => {
-      if (e.target && e.target.closest && e.target.closest('button, .mode-card, .blade-card, .btn-close')) {
-        return;
-      }
-      if (e.touches.length > 0) {
-        this.isMouseDown = true;
-        const pos = this.getCanvasCoords(e.touches[0]);
-        this.addPoint(pos.x, pos.y);
-        this.lastPos = pos;
-      }
-    }, { passive: true });
-
-    window.addEventListener('touchmove', (e) => {
-      if (this.isMouseDown && e.touches.length > 0) {
-        const pos = this.getCanvasCoords(e.touches[0]);
-        this.handleMove(pos.x, pos.y);
-      }
-    }, { passive: true });
-
-    window.addEventListener('touchend', () => {
+    const endSwipe = () => {
       this.isMouseDown = false;
       this.lastPos = null;
       this.isSwiping = false;
+    };
+
+    this.canvas.addEventListener('pointerup', endSwipe);
+    this.canvas.addEventListener('pointercancel', endSwipe);
+    this.canvas.addEventListener('lostpointercapture', endSwipe);
+
+    window.addEventListener('resize', () => {
+      this.updateCanvasRect();
     });
   }
 
   getCanvasCoords(e) {
-    const rect = this.canvas.getBoundingClientRect();
-    const clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
-    const clientY = e.clientY !== undefined ? e.clientY : (e.touches && e.touches[0] ? e.touches[0].clientY : 0);
+    const rect = this.canvasRect;
+
     return {
-      x: clientX - rect.left,
-      y: clientY - rect.top,
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
     };
   }
 
   handleMove(x, y) {
-    const now = performance.now();
-    if (this.lastPos) {
-      const dx = x - this.lastPos.x;
-      const dy = y - this.lastPos.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      
-      // Emit sparks along the blade
-      if (dist > 15) {
-        this.emitSparks(x, y, dx, dy);
+    const last = this.lastPos;
+
+    if (last) {
+      const dx = x - last.x;
+      const dy = y - last.y;
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq > 225) {
+        const dist = Math.sqrt(distSq);
+
+        // Keep spark workload low on mobile.
+        if (!this.isMobile || this.sparks.length < this.maxSparks) {
+          this.emitSparks(x, y, dx, dy);
+        }
+
         this.isSwiping = true;
       }
     }
+
     this.addPoint(x, y);
-    this.lastPos = { x, y, time: now };
+
+    this.lastPos = {
+      x,
+      y,
+    };
   }
 
   addPoint(x, y) {
     const now = performance.now();
-    this.points.push({ x, y, time: now });
+    const last = this.points[this.points.length - 1];
+
+    // Don't create excessive points from high-frequency touch events.
+    if (last) {
+      const dx = x - last.x;
+      const dy = y - last.y;
+
+      if (dx * dx + dy * dy < 16) {
+        return;
+      }
+    }
+
+    this.points.push({
+      x,
+      y,
+      time: now,
+    });
+
+    if (this.points.length > this.maxPoints) {
+      this.points.shift();
+    }
   }
 
   emitSparks(x, y, dx, dy) {
-const count = this.canvas.width > 1000 ? 2 : 1;
+    if (this.sparks.length >= this.maxSparks) {
+      return;
+    }
+
+    const count = this.isMobile ? 1 : 2;
+
     for (let i = 0; i < count; i++) {
-      const angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.5;
+      if (this.sparks.length >= this.maxSparks) {
+        break;
+      }
+
+      const angle =
+        Math.atan2(dy, dx) +
+        (Math.random() - 0.5) * 1.5;
+
       const speed = Math.random() * 80 + 40;
+
       this.sparks.push({
         x: x + (Math.random() - 0.5) * 6,
         y: y + (Math.random() - 0.5) * 6,
@@ -167,7 +217,7 @@ const count = this.canvas.width > 1000 ? 2 : 1;
         vy: Math.sin(angle) * speed,
         size: Math.random() * 3 + 1.5,
         alpha: 1,
-        life: 0.35, // seconds
+        life: 0.35,
         maxLife: 0.35,
         color: this.currentSkin.sparkColor,
       });
@@ -176,123 +226,160 @@ const count = this.canvas.width > 1000 ? 2 : 1;
 
   update(dt) {
     const now = performance.now();
-    // Prune expired trail points
-while (
-  this.points.length > 0 &&
-  now - this.points[0].time >= this.maxTrailAge
-) {
-  this.points.shift();
-}
 
-    // Update blade sparks
+    // Remove expired trail points.
+    let firstAlive = 0;
+
+    while (
+      firstAlive < this.points.length &&
+      now - this.points[firstAlive].time >= this.maxTrailAge
+    ) {
+      firstAlive++;
+    }
+
+    if (firstAlive > 0) {
+      this.points.splice(0, firstAlive);
+    }
+
+    // Update sparks.
     for (let i = this.sparks.length - 1; i >= 0; i--) {
       const sp = this.sparks[i];
+
       sp.x += sp.vx * dt;
       sp.y += sp.vy * dt;
       sp.life -= dt;
-      sp.alpha = Math.max(0, sp.life / sp.maxLife);
+
       if (sp.life <= 0) {
         this.sparks.splice(i, 1);
+      } else {
+        sp.alpha = sp.life / sp.maxLife;
       }
     }
   }
 
-draw(ctx) {
-  const now = performance.now();
+  draw(ctx) {
+    const now = performance.now();
 
-  // Sparks
-  if (this.sparks.length > 0) {
+    // Sparks.
+    if (this.sparks.length > 0) {
+      ctx.save();
+
+      for (const sp of this.sparks) {
+        ctx.globalAlpha = sp.alpha;
+        ctx.fillStyle = sp.color;
+
+        ctx.beginPath();
+        ctx.arc(
+          sp.x,
+          sp.y,
+          sp.size,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+
+      ctx.restore();
+    }
+
+    if (this.points.length < 2) {
+      return;
+    }
+
     ctx.save();
 
-    for (const sp of this.sparks) {
-      if (sp.alpha <= 0) continue;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
-      ctx.globalAlpha = sp.alpha;
-      ctx.fillStyle = sp.color;
-      ctx.beginPath();
-      ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
-      ctx.fill();
+    // Glow.
+    ctx.strokeStyle = this.currentSkin.glowColor;
+    ctx.beginPath();
+
+    let hasGlow = false;
+
+    for (let i = 1; i < this.points.length; i++) {
+      const p0 = this.points[i - 1];
+      const p1 = this.points[i];
+
+      const ageRatio =
+        (now - p1.time) / this.maxTrailAge;
+
+      if (ageRatio >= 1) continue;
+
+      if (!hasGlow) {
+        ctx.moveTo(p0.x, p0.y);
+        hasGlow = true;
+      }
+
+      ctx.lineTo(p1.x, p1.y);
+    }
+
+    if (hasGlow) {
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 10;
+      ctx.stroke();
+    }
+
+    // Core.
+    ctx.strokeStyle = this.currentSkin.coreColor;
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 3;
+
+    ctx.beginPath();
+
+    let hasCore = false;
+
+    for (let i = 1; i < this.points.length; i++) {
+      const p0 = this.points[i - 1];
+      const p1 = this.points[i];
+
+      const ageRatio =
+        (now - p1.time) / this.maxTrailAge;
+
+      if (ageRatio >= 1) continue;
+
+      if (!hasCore) {
+        ctx.moveTo(p0.x, p0.y);
+        hasCore = true;
+      }
+
+      ctx.lineTo(p1.x, p1.y);
+    }
+
+    if (hasCore) {
+      ctx.stroke();
     }
 
     ctx.restore();
   }
 
-  if (this.points.length < 2) return;
-
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  // Outer glow — no shadowBlur
-  ctx.strokeStyle = this.currentSkin.glowColor;
-  ctx.shadowBlur = 0;
-
-  for (let i = 1; i < this.points.length; i++) {
-    const p0 = this.points[i - 1];
-    const p1 = this.points[i];
-
-    const ageRatio = (now - p1.time) / this.maxTrailAge;
-    if (ageRatio >= 1) continue;
-
-    const alpha = 1 - ageRatio;
-
-    ctx.globalAlpha = alpha * 0.35;
-    ctx.lineWidth = (1 - ageRatio) * 18 + 3;
-
-    ctx.beginPath();
-    ctx.moveTo(p0.x, p0.y);
-    ctx.lineTo(p1.x, p1.y);
-    ctx.stroke();
-  }
-
-  // Core
-  ctx.strokeStyle = this.currentSkin.coreColor;
-
-  for (let i = 1; i < this.points.length; i++) {
-    const p0 = this.points[i - 1];
-    const p1 = this.points[i];
-
-    const ageRatio = (now - p1.time) / this.maxTrailAge;
-    if (ageRatio >= 1) continue;
-
-    ctx.globalAlpha = 1 - ageRatio;
-    ctx.lineWidth = (1 - ageRatio) * 4 + 1;
-
-    ctx.beginPath();
-    ctx.moveTo(p0.x, p0.y);
-    ctx.lineTo(p1.x, p1.y);
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
-  /**
-   * Returns recent segment pairs to check for slice collisions
-   */
-getSegments() {
-  if (this.points.length < 2) return [];
-
-  const now = performance.now();
-  const segs = [];
-
-  // Only inspect the most recent points.
-  const start = Math.max(1, this.points.length - 8);
-
-  for (let i = start; i < this.points.length; i++) {
-    const p0 = this.points[i - 1];
-    const p1 = this.points[i];
-
-    if (now - p1.time < 70) {
-      segs.push({
-        x1: p0.x,
-        y1: p0.y,
-        x2: p1.x,
-        y2: p1.y,
-      });
+  getSegments() {
+    if (this.points.length < 2) {
+      return [];
     }
-  }
 
-  return segs;
-}
+    const now = performance.now();
+    const segs = [];
+
+    const start = Math.max(
+      1,
+      this.points.length - 6
+    );
+
+    for (let i = start; i < this.points.length; i++) {
+      const p0 = this.points[i - 1];
+      const p1 = this.points[i];
+
+      if (now - p1.time < 70) {
+        segs.push({
+          x1: p0.x,
+          y1: p0.y,
+          x2: p1.x,
+          y2: p1.y,
+        });
+      }
+    }
+
+    return segs;
+  }
 }
